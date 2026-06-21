@@ -1,0 +1,32 @@
+# Generated satellite data (large GeoTIFFs, regenerate via the pipeline)
+flood_data_exports/
+*.tif
+*.tiff
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment / secrets
+.env
+
+# Earth Engine credential cache, in case it ever ends up inside the repo
+.config/earthengine/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

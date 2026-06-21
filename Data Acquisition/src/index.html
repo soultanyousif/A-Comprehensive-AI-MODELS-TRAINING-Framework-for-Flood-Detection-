@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Flood Data Generator - Sen1Floods11</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c10;--panel:#0d1117;--panel2:#0f1520;
+  --border:#1c2430;--border2:#243040;
+  --text:#c9d1d9;--dim:#586069;--muted:#8b949e;
+  --green:#39d353;--blue:#58a6ff;--orange:#f0883e;
+  --red:#f85149;
+  --mono:'JetBrains Mono',monospace;--sans:'Syne',sans-serif;
+  --sw:350px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px}
+#layout{display:flex;height:100vh}
+.leaflet-draw.leaflet-control{display:none!important}
+
+/* Sidebar */
+#sidebar{width:var(--sw);min-width:var(--sw);background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:10}
+#sh{padding:18px 18px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.logo{font-family:var(--sans);font-size:17px;font-weight:800;letter-spacing:-.5px;color:#e6edf3;display:flex;align-items:center;gap:8px}
+.logo .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.sub{color:var(--dim);font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+
+#sb{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px;display:flex;flex-direction:column;gap:13px}
+#sb::-webkit-scrollbar{width:3px}
+#sb::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.slabel{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+label.field{display:flex;flex-direction:column;gap:4px}
+label.field span{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+input[type=date]{background:var(--bg);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 9px;width:100%;outline:none;transition:border-color .15s}
+input[type=date]:focus{border-color:var(--blue)}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.5);cursor:pointer}
+
+/* Buttons */
+.btn{width:100%;padding:8px 13px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);font-family:var(--mono);font-size:12px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;letter-spacing:.02em;line-height:1}
+.btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(88,166,255,.05)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn-primary{background:var(--green);border-color:var(--green);color:#0d1117;font-weight:700}
+.btn-primary:hover{background:#45e35f;border-color:#45e35f;color:#0d1117}
+.btn-draw{border-color:var(--blue);color:var(--blue)}
+.btn-draw.active{background:rgba(88,166,255,.12)}
+.btn-reset{border-color:var(--orange);color:var(--orange)}
+.btn-reset:hover{background:rgba(240,136,62,.08)}
+
+/* Area hint */
+.hint{padding:7px 9px;border-radius:4px;font-size:10px;line-height:1.6;border:1px solid}
+.hint.ideal{border-color:rgba(57,211,83,.4);background:rgba(57,211,83,.05);color:var(--green)}
+.hint.small{border-color:rgba(88,166,255,.4);background:rgba(88,166,255,.05);color:var(--blue)}
+.hint.large{border-color:rgba(240,136,62,.4);background:rgba(240,136,62,.05);color:var(--orange)}
+.hint.too_small{border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.05);color:var(--red)}
+
+/* Error */
+#err-box{display:none;padding:9px 11px;border:1px solid var(--red);border-radius:4px;background:rgba(248,81,73,.07);font-size:11px;color:var(--red);line-height:1.5;word-break:break-word}
+#err-box .et{font-weight:700;font-size:9px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+#err-box .eh{color:var(--orange);margin-top:5px;font-size:10px}
+
+/* Date list */
+#date-list{display:flex;flex-direction:column;gap:3px;max-height:190px;overflow-y:auto}
+#date-list::-webkit-scrollbar{width:2px}
+#date-list::-webkit-scrollbar-thumb{background:var(--border2)}
+.dchip{display:flex;align-items:center;padding:7px 9px;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all .12s;gap:7px;background:var(--bg)}
+.dchip:hover{border-color:var(--border2);background:#0f141a}
+.dchip.sel{border-color:var(--green);background:rgba(57,211,83,.06)}
+.dchip .dd{font-size:12px;flex:1;color:#e6edf3}
+.dchip .dbadge{font-size:9px;padding:2px 5px;border-radius:3px;background:rgba(88,166,255,.12);color:var(--blue)}
+.dchip.sel .dbadge{background:rgba(57,211,83,.15);color:var(--green)}
+.dchip .ddot{width:5px;height:5px;border-radius:50%;flex-shrink:0;display:none}
+.dchip.done .ddot{display:block;background:var(--green)}
+
+/* Progress bar */
+.prog-wrap{display:none;margin-top:8px}
+.prog-label{font-size:10px;color:var(--dim);margin-bottom:5px}
+.prog-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.prog-bar{height:100%;width:0%;transition:width .3s;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--green))}
+
+/* History list */
+#dl-list{display:flex;flex-direction:column;gap:4px}
+.dli{display:flex;align-items:center;padding:7px 9px;border:1px solid var(--border);border-radius:4px;background:var(--bg);gap:7px}
+.dli .dlm{flex:1;overflow:hidden}
+.dli .dlloc{font-size:11px;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dli .dldate{font-size:9px;color:var(--dim)}
+.bsm{padding:4px 8px;border:1px solid var(--border2);border-radius:3px;background:transparent;font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .12s;white-space:nowrap;color:var(--green)}
+.bsm:hover{border-color:var(--green);background:rgba(57,211,83,.08)}
+
+#statusbar{padding:9px 15px;border-top:1px solid var(--border);font-size:10px;color:var(--dim);background:var(--panel);flex-shrink:0;display:flex;align-items:center;gap:6px;min-height:34px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#statusbar.ok{color:var(--green)}#statusbar.warn{color:var(--orange)}
+#statusbar.err{color:var(--red)}
+
+/* Map */
+#mapwrap{flex:1;display:flex;flex-direction:column;position:relative}
+#map{flex:1;background:#080d11}
+#coords{position:absolute;bottom:8px;left:8px;background:rgba(8,12,16,.82);backdrop-filter:blur(6px);border:1px solid var(--border);border-radius:4px;padding:4px 9px;font-size:10px;color:var(--dim);z-index:1000;pointer-events:none}
+
+/* Visualization panel */
+#vizpanel{background:var(--panel2);border-top:1px solid var(--border);height:0;overflow:hidden;transition:height .35s cubic-bezier(.4,0,.2,1);flex-shrink:0;display:flex;flex-direction:column}
+#vizpanel.open{height:46vh}
+#vizhead{display:flex;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);gap:8px;flex-shrink:0}
+#viz-title{font-family:var(--sans);font-size:11px;font-weight:700;color:#e6edf3;flex:1}
+.navbtn{padding:4px 9px;border:1px solid var(--border2);border-radius:3px;background:transparent;color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .12s}
+.navbtn:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+.navbtn:disabled{opacity:.3;cursor:not-allowed}
+#tilectr{font-size:10px;color:var(--dim);min-width:55px;text-align:center}
+.closebtn{padding:4px 9px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--dim);font-size:11px;cursor:pointer;font-family:var(--mono);transition:all .12s}
+.closebtn:hover{border-color:var(--red);color:var(--red)}
+
+#vizgrid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);overflow:hidden}
+.vcell{background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.vclabel{position:absolute;top:0;left:0;font-size:8px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;background:rgba(8,12,16,.82);backdrop-filter:blur(4px);color:var(--muted);z-index:2;line-height:1.3}
+.vcell img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+.vcell .vempty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--border2);font-size:10px}
+.vload{position:absolute;inset:0;background:rgba(8,12,16,.7);display:flex;align-items:center;justify-content:center;z-index:5}
+.spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Leaflet overrides */
+.leaflet-control-attribution{background:rgba(8,12,16,.7)!important;color:#444!important;font-size:9px!important}
+.leaflet-bar a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important}
+.leaflet-bar a:hover{background:var(--border)!important}
+</style>
+</head>
+<body>
+<div id="layout">
+
+<!-- Sidebar -->
+<aside id="sidebar">
+  <div id="sh">
+    <div class="logo">Flood Data Generator <div class="dot"></div></div>
+    <div class="sub">Sen1Floods11 compatible</div>
+  </div>
+  <div id="sb">
+
+    <!-- Area of interest -->
+    <div>
+      <div class="slabel">Area of Interest</div>
+      <div class="row2" style="margin-bottom:6px">
+        <button class="btn btn-draw" id="btn-draw" onclick="toggleDraw()">Draw</button>
+        <button class="btn btn-reset" id="btn-reset" onclick="resetAOI()">Reset AOI</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim)" id="aoi-info">No area selected</div>
+      <div id="aoi-stats" style="display:none;margin-top:6px;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg)">Area: <span id="aoi-area">-</span> km2</span>
+        <span style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg)">Tiles: <span id="aoi-tiles">-</span></span>
+      </div>
+      <div id="hint-box" style="display:none;margin-top:6px"></div>
+      <div style="margin-top:8px;padding:7px 9px;border:1px solid var(--border);border-radius:4px;background:rgba(88,166,255,.03);font-size:10px;color:var(--dim);line-height:1.7">
+        <span style="color:var(--blue)">Chip size: 512x512 px at 10m = 5.12km</span><br>
+        <span style="color:var(--muted)">~25 km2 area produces 1 chip, ~400 km2 produces 16 chips</span>
+      </div>
+    </div>
+
+    <!-- Date range -->
+    <div>
+      <div class="slabel">Date Range</div>
+      <div class="row2">
+        <label class="field"><span>From</span><input type="date" id="start-date" value="2024-01-01"/></label>
+        <label class="field"><span>To</span>  <input type="date" id="end-date"   value="2026-12-31"/></label>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-find" onclick="findDates()" disabled>Find Paired Dates</button>
+
+    <div id="err-box"><div class="et">Error</div><div id="err-msg"></div><div id="err-hint" class="eh"></div></div>
+
+    <!-- Paired date list -->
+    <div id="date-section" style="display:none">
+      <div class="slabel">
+        Paired S1+S2 Dates <span id="date-count" style="color:var(--green)"></span>
+        <button onclick="selAll()" id="btn-selall" style="margin-left:auto;background:none;border:none;color:var(--blue);font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Select All</button>
+      </div>
+      <div id="date-list"></div>
+      <div id="sel-summary" style="display:none;margin-top:5px;font-size:10px;color:var(--green);padding:5px 8px;border:1px solid rgba(57,211,83,.2);border-radius:3px;background:rgba(57,211,83,.04)">
+        <span id="sel-count">0</span> dates selected, <span id="sel-tiles">0</span> total chips
+      </div>
+    </div>
+
+    <!-- Download -->
+    <div id="dl-section" style="display:none">
+      <button class="btn btn-primary" id="btn-dl" onclick="startDownload()">Download Selected</button>
+      <div class="prog-wrap" id="dl-prog">
+        <div class="prog-label" id="dl-label">Idle</div>
+        <div class="prog-track"><div class="prog-bar" id="dl-bar"></div></div>
+      </div>
+      <div class="row2" id="dl-controls" style="display:none;margin-top:6px">
+        <button class="btn" id="btn-pause" onclick="togglePause()">Pause</button>
+        <button class="btn btn-reset" id="btn-stop" onclick="stopDownload()">Stop</button>
+      </div>
+    </div>
+
+    <!-- Download history -->
+    <div id="hist-section" style="display:none">
+      <div class="slabel">Downloaded</div>
+      <div id="dl-list"></div>
+    </div>
+
+  </div><!-- /sb -->
+  <div id="statusbar">Ready</div>
+</aside>
+
+<!-- Map -->
+<div id="mapwrap">
+  <div id="map"></div>
+  <div id="coords">0.00000, 0.00000</div>
+
+  <!-- Visualization panel -->
+  <div id="vizpanel">
+    <div id="vizhead">
+      <div id="viz-title">Tile Visualization</div>
+      <button class="navbtn" id="btn-prev" onclick="navTile(-1)" disabled>Prev</button>
+      <span id="tilectr">-</span>
+      <button class="navbtn" id="btn-next" onclick="navTile(1)"  disabled>Next</button>
+      <button class="closebtn" onclick="closeViz()">Close</button>
+    </div>
+    <!-- 4 panels match the fields returned by /api/visualize: vh, vv, false_color, rgb -->
+    <div id="vizgrid">
+      <div class="vcell" id="cell-vh"><div class="vclabel">SAR VH</div><div class="vempty">No data</div></div>
+      <div class="vcell" id="cell-vv"><div class="vclabel">SAR VV</div><div class="vempty">No data</div></div>
+      <div class="vcell" id="cell-fc"><div class="vclabel">SAR False Colour (VV/VH)</div><div class="vempty">No data</div></div>
+      <div class="vcell" id="cell-rgb"><div class="vclabel">Optical True Colour</div><div class="vempty">No data</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Confirm download modal -->
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border2);border-radius:8px;padding:22px;max-width:400px;width:90%;font-size:12px;line-height:1.7">
+    <div style="font-family:var(--sans);font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:10px">Download Estimate</div>
+    <div id="modal-body" style="color:var(--text);margin-bottom:14px"></div>
+    <div style="display:flex;gap:7px">
+      <button class="btn btn-primary" onclick="confirmDownload()" style="flex:1">Proceed</button>
+      <button class="btn"             onclick="closeModal()"      style="flex:1">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:8002';
+
+// Map setup
+const map = L.map('map',{zoomControl:false}).setView([20,0],3);
+L.control.zoom({position:'topright'}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:19});
+const dark= L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'CARTO'});
+const lbls= L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{opacity:.7,pane:'shadowPane'});
+sat.addTo(map); lbls.addTo(map);
+L.control.layers({'Satellite':sat,'Dark':dark},{},{position:'topright'}).addTo(map);
+map.on('mousemove',e=>{document.getElementById('coords').textContent=`${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`});
+
+// Draw controls
+const drawn = new L.FeatureGroup(); map.addLayer(drawn);
+const dc = new L.Control.Draw({
+  draw:{polygon:{shapeOptions:{color:'#58a6ff',weight:2,fillOpacity:.08}},
+        rectangle:false,circle:false,marker:false,polyline:false,circlemarker:false},
+  edit:{featureGroup:drawn}
+}); map.addControl(dc);
+
+let drawHandler=null, isDrawing=false, currentGeometry=null;
+
+// Toggle polygon drawing mode on the map.
+function toggleDraw(){
+  const btn=document.getElementById('btn-draw');
+  if(isDrawing){drawHandler&&drawHandler.disable();isDrawing=false;btn.classList.remove('active');btn.textContent='Draw';}
+  else{drawHandler=new L.Draw.Polygon(map,dc.options.draw.polygon);drawHandler.enable();isDrawing=true;btn.classList.add('active');btn.textContent='Cancel';setStatus('Click to draw polygon, double-click to finish','warn');}
+}
+
+// Clear the drawn area of interest and reset all dependent UI state.
+function resetAOI(){
+  drawn.clearLayers();
+  currentGeometry=null;
+  isDrawing=false;
+  const btn=document.getElementById('btn-draw');
+  btn.classList.remove('active'); btn.textContent='Draw';
+  drawHandler&&drawHandler.disable(); drawHandler=null;
+
+  document.getElementById('btn-find').disabled=true;
+  document.getElementById('aoi-info').textContent='No area selected';
+  document.getElementById('aoi-stats').style.display='none';
+  document.getElementById('hint-box').style.display='none';
+  document.getElementById('date-section').style.display='none';
+  document.getElementById('dl-section').style.display='none';
+  document.getElementById('date-list').innerHTML='';
+  selectedDates.clear();
+  hideError();
+  setStatus('AOI reset, draw a new polygon','warn');
+}
+
+map.on(L.Draw.Event.CREATED,e=>{
+  drawn.clearLayers(); drawn.addLayer(e.layer);
+  currentGeometry=e.layer.toGeoJSON().geometry;
+  isDrawing=false;
+  const btn=document.getElementById('btn-draw');
+  btn.classList.remove('active'); btn.textContent='Redraw';
+  document.getElementById('btn-find').disabled=false;
+  document.getElementById('aoi-info').textContent='Area drawn, find dates';
+  hideError();
+  setStatus('Area selected','ok');
+});
+
+// State
+let selectedDates=new Set(), tilesPerDate=0;
+let dlTaskId=null, dlPollTimer=null, dlPaused=false;
+let downloadQueue=[];
+let vizLoc=null,vizDate=null,vizIdx=0,vizTotal=0;
+let doneDates=new Set();
+
+function setStatus(msg,type=''){const el=document.getElementById('statusbar');el.textContent=msg;el.className=type}
+function showError(msg){
+  const iam=msg.includes('permission')||msg.includes('IAM')||msg.includes('roles/');
+  document.getElementById('err-msg').textContent=msg;
+  document.getElementById('err-hint').textContent=iam?'Add your account as Owner on the configured GCP project and restart the server':'';
+  document.getElementById('err-box').style.display='block';
+}
+function hideError(){document.getElementById('err-box').style.display='none'}
+
+// Query the backend for paired Sentinel-1/Sentinel-2 dates over the current AOI.
+async function findDates(){
+  if(!currentGeometry)return;
+  hideError();
+  setStatus('Querying Earth Engine','warn');
+  document.getElementById('btn-find').disabled=true;
+  try{
+    const res=await fetch(`${API}/api/process_polygon`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'Feature',geometry:currentGeometry,properties:{
+        start_date:document.getElementById('start-date').value,
+        end_date:  document.getElementById('end-date').value}})});
+    const d=await res.json();
+    if(!res.ok){showError(d.detail||JSON.stringify(d));setStatus('API error','err');return;}
+
+    tilesPerDate=d.tile_count||0;
+    if(d.area_km2||d.tile_count){
+      document.getElementById('aoi-stats').style.display='flex';
+      document.getElementById('aoi-area').textContent=d.area_km2?.toLocaleString()||'-';
+      document.getElementById('aoi-tiles').textContent=d.tile_count?.toLocaleString()||'-';
+    }
+    if(d.area_hint){
+      const hb=document.getElementById('hint-box');
+      hb.style.display='block';
+      hb.innerHTML=`<div class="hint ${d.area_hint}">${d.area_msg}</div>`;
+    }
+    const dates=d.available_dates||[];
+    setStatus(dates.length?`Found ${dates.length} paired dates, ${d.location}, ${d.area_km2} km2`:`No paired dates found for ${d.location}`
+             ,dates.length?'ok':'warn');
+    renderDates(dates);
+  }catch(e){showError(e.message);setStatus('Network error, is main.py running?','err');}
+  finally{document.getElementById('btn-find').disabled=false;}
+}
+
+// Render the list of available paired dates as selectable chips.
+function renderDates(dates){
+  selectedDates.clear();
+  const sec=document.getElementById('date-section'),list=document.getElementById('date-list');
+  sec.style.display=dates.length?'block':'none';
+  document.getElementById('dl-section').style.display=dates.length?'block':'none';
+  document.getElementById('date-count').textContent=`(${dates.length})`;
+  list.innerHTML='';
+  dates.forEach(d=>{
+    const c=document.createElement('div');
+    c.className='dchip'+(doneDates.has(d)?' done':'');
+    c.dataset.date=d;
+    c.innerHTML=`<div class="ddot"></div>
+      <input type="checkbox" style="accent-color:var(--green);width:13px;height:13px;flex-shrink:0;cursor:pointer">
+      <span class="dd">${d}</span>
+      <span class="dbadge" style="margin-left:auto">${tilesPerDate?tilesPerDate+' chips':'S1+S2'}</span>`;
+    const cb=c.querySelector('input');
+    cb.addEventListener('change',()=>{
+      if(cb.checked){selectedDates.add(d);c.classList.add('sel');}
+      else{selectedDates.delete(d);c.classList.remove('sel');}
+      updateSel();
+    });
+    c.addEventListener('click',e=>{if(e.target!==cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'));}});
+    list.appendChild(c);
+  });
+  updateSel(); loadHistory();
+}
+
+// Update the selected-dates summary line (count and total chip estimate).
+function updateSel(){
+  const n=selectedDates.size,sum=document.getElementById('sel-summary');
+  if(!n){sum.style.display='none';return;}
+  sum.style.display='block';
+  document.getElementById('sel-count').textContent=n;
+  document.getElementById('sel-tiles').textContent=(n*tilesPerDate).toLocaleString();
+}
+
+// Select or deselect all date chips.
+function selAll(){
+  const chips=document.querySelectorAll('.dchip'),all=selectedDates.size===chips.length;
+  chips.forEach(c=>{const d=c.dataset.date,cb=c.querySelector('input');
+    if(all){selectedDates.delete(d);cb.checked=false;c.classList.remove('sel');}
+    else   {selectedDates.add(d);  cb.checked=true; c.classList.add('sel');}
+  });
+  document.getElementById('btn-selall').textContent=all?'Select All':'Deselect All';
+  updateSel();
+}
+
+// Show the download confirmation modal with an estimate of size/time.
+async function startDownload(){
+  if(!selectedDates.size||!currentGeometry){setStatus('Select at least one date','warn');return;}
+  const dates=[...selectedDates].sort();
+  const tt=dates.length*tilesPerDate,mb=tt*2,mins=Math.round(tt*4/60);
+  document.getElementById('modal-body').innerHTML=
+    `<b style="color:var(--green)">Dates:</b> ${dates.join(', ')}<br>`+
+    `<b style="color:var(--green)">Chips per date:</b> ${tilesPerDate}<br>`+
+    `<b style="color:var(--green)">Total chips:</b> ${tt}<br>`+
+    `<b style="color:var(--green)">Estimated storage:</b> ${mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB'}<br>`+
+    `<b style="color:var(--green)">Estimated time:</b> ${mins} min`;
+  document.getElementById('modal').style.display='flex';
+  downloadQueue=dates;
+}
+function closeModal(){document.getElementById('modal').style.display='none';setStatus('Ready','')}
+
+// Close the modal and start processing the download queue.
+async function confirmDownload(){
+  closeModal();
+  document.getElementById('btn-dl').disabled=true;
+  document.getElementById('dl-prog').style.display='block';
+  document.getElementById('dl-controls').style.display='flex';
+  document.getElementById('btn-pause').textContent='Pause';
+  dlPaused=false;
+  await processQueue();
+}
+
+// Process the next queued date: request a download task and start polling it.
+async function processQueue(){
+  if(!downloadQueue.length){
+    setStatus('All downloads complete','ok');
+    resetDLUI();loadHistory();
+    return;
+  }
+  const date=downloadQueue.shift();
+  setStatus(`Queuing ${date} (${downloadQueue.length} remaining)`,'warn');
+  try{
+    const res=await fetch(`${API}/api/download_tiles`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,geometry:currentGeometry})});
+    const d=await res.json();
+    if(!res.ok){showError(d.detail||'Download error');resetDLUI();return;}
+    dlTaskId=d.task_id;
+    pollDL(date);
+  }catch(e){showError(e.message);resetDLUI();}
+}
+
+// Poll the backend task status for an in-progress download until it finishes.
+function pollDL(date){
+  clearInterval(dlPollTimer);
+  dlPollTimer=setInterval(async()=>{
+    if(!dlTaskId)return;
+    try{
+      const d=await(await fetch(`${API}/api/status/${dlTaskId}`)).json();
+      const pct=d.total>0?Math.round(d.progress/d.total*100):0;
+      document.getElementById('dl-bar').style.width=pct+'%';
+      document.getElementById('dl-label').textContent=`[${date}] ${d.message}`;
+
+      if(d.status==='error'){showError(d.message);clearInterval(dlPollTimer);resetDLUI();}
+      if(d.status==='stopped'){
+        clearInterval(dlPollTimer);
+        downloadQueue=[];
+        setStatus(`Stopped: ${d.message}`,'warn');
+        resetDLUI();
+      }
+      if(d.status==='done'){
+        clearInterval(dlPollTimer);
+        doneDates.add(date);
+        document.querySelectorAll(`.dchip[data-date="${date}"]`).forEach(c=>c.classList.add('done'));
+        loadHistory(); await processQueue();
+      }
+    }catch(e){}
+  },1500);
+}
+
+// Reset the download button and progress bar back to idle state.
+function resetDLUI(){
+  document.getElementById('btn-dl').disabled=false;
+  document.getElementById('dl-controls').style.display='none';
+  document.getElementById('btn-pause').textContent='Pause';
+  dlPaused=false;
+  dlTaskId=null;
+}
+
+// Toggle the current download task between paused and running.
+async function togglePause(){
+  if(!dlTaskId)return;
+  dlPaused=!dlPaused;
+  document.getElementById('btn-pause').textContent=dlPaused?'Resume':'Pause';
+  try{
+    await fetch(`${API}/api/task_control/${dlTaskId}`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:dlPaused?'pause':'resume'})});
+  }catch(e){showError(e.message);}
+}
+
+// Stop the entire download run: cancels the current task and clears any queued dates.
+async function stopDownload(){
+  if(!dlTaskId)return;
+  downloadQueue=[];
+  try{
+    await fetch(`${API}/api/task_control/${dlTaskId}`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'stop'})});
+  }catch(e){showError(e.message);}
+}
+
+// Fetch the list of completed downloads from the backend.
+async function fetchHistory(){
+  try{return await(await fetch(`${API}/api/list_downloads`)).json();}catch{return[];}
+}
+
+// Render the download history list in the sidebar.
+async function loadHistory(){
+  const data=await fetchHistory();
+  const sec=document.getElementById('hist-section'),list=document.getElementById('dl-list');
+  if(!data.length){sec.style.display='none';return;}
+  sec.style.display='block';
+  list.innerHTML='';
+  data.forEach(item=>{
+    const div=document.createElement('div');div.className='dli';
+    div.innerHTML=`
+      <div class="dlm">
+        <div class="dlloc">${item.location}</div>
+        <div class="dldate">${item.date}</div>
+      </div>
+      <span style="font-size:10px;color:var(--dim);white-space:nowrap">${item.tiles} chips</span>
+      <button class="bsm" onclick="openViz('${item.location}','${item.date}',${item.tiles})">View</button>`;
+    list.appendChild(div);
+  });
+}
+
+// Open the visualization panel for a downloaded location/date and load the first tile.
+async function openViz(loc,date,total){
+  vizLoc=loc;vizDate=date;vizTotal=total;vizIdx=0;
+  document.getElementById('vizpanel').classList.add('open');
+  await loadTile(0);
+}
+function closeViz(){document.getElementById('vizpanel').classList.remove('open');}
+
+// Navigate to the previous/next tile in the visualization panel.
+async function navTile(dir){const n=vizIdx+dir;if(n<0||n>=vizTotal)return;vizIdx=n;await loadTile(n);}
+
+// Fetch and render the preview images for one tile (vh, vv, false_color, rgb).
+async function loadTile(idx){
+  document.getElementById('btn-prev').disabled=(idx===0);
+  document.getElementById('btn-next').disabled=(idx>=vizTotal-1);
+  document.getElementById('tilectr').textContent=`${idx+1}/${vizTotal}`;
+  document.getElementById('viz-title').textContent=`${vizLoc} - ${vizDate} - tile_${idx}`;
+
+  const cells=['vh','vv','fc','rgb'];
+  cells.forEach(k=>{
+    const cell=document.getElementById(`cell-${k}`);
+    const old=cell.querySelector('img');if(old)old.remove();
+    let spin=cell.querySelector('.vload');
+    if(!spin){spin=document.createElement('div');spin.className='vload';spin.innerHTML='<div class="spinner"></div>';cell.appendChild(spin);}
+    spin.style.display='flex';
+  });
+
+  try{
+    const res=await fetch(`${API}/api/visualize/${vizLoc}/${vizDate}/${idx}`);
+    const d=await res.json();
+    if(!res.ok){showError(d.detail||'Visualization failed');return;}
+    renderCell('cell-vh',  d.vh);
+    renderCell('cell-vv',  d.vv);
+    renderCell('cell-fc',  d.false_color);
+    renderCell('cell-rgb', d.rgb);
+  }catch(e){showError(e.message);}
+}
+
+// Render a single base64 PNG into a visualization cell, or show an empty state.
+function renderCell(id,b64){
+  const cell=document.getElementById(id);
+  const spin=cell.querySelector('.vload');if(spin)spin.style.display='none';
+  const ph=cell.querySelector('.vempty');if(ph)ph.remove();
+  if(!b64){const p=document.createElement('div');p.className='vempty';p.textContent='No data';cell.appendChild(p);return;}
+  let img=cell.querySelector('img');
+  if(!img){img=document.createElement('img');cell.appendChild(img);}
+  img.src=`data:image/png;base64,${b64}`;
+}
+
+loadHistory();
+</script>
+</body>
+</html>
