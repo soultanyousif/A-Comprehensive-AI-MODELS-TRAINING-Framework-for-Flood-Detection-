@@ -1,121 +1,94 @@
-# Comprehensive AI Models Training Framework for Flood Detection
+# AI Assistant Module
 
-An end-to-end framework for detecting floods and flood-damaged buildings from satellite imagery, covering everything from data acquisition to post-flood damage assessment. The repository also includes a retrieval-based **AI Assistant** that answers natural-language questions about how each module works.
+<img width="2720" height="1280" alt="ai_assistant_module_logo" src="https://github.com/user-attachments/assets/5655fdd8-c18f-49d5-ae74-3de09529b1f9" />
 
-## Table of Contents
-- [Overview](#overview)
-- [Modules](#modules)
-- [AI Assistant (Q&A System)](#ai-assistant-qa-system)
-- [Repository Structure](#repository-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Dataset](#dataset)
-- [Limitations](#limitations)
-- [License](#license)
+Part of the flood detection AI framework. This module is an in-app assistant that answers user questions about how the other four modules work (Data Acquisition, Data Annotation, Training and Preprocessing, Damaged Building Detection). It is a support and documentation tool, not part of the flood detection model itself.
 
-## Overview
+## What it does
 
-This project trains and deploys deep learning models that fuse **Sentinel-1 (radar)** and **Sentinel-2 (optical)** satellite imagery to detect flooded areas and assess building damage. It is organized into four pipeline modules, plus a supporting AI assistant that helps users (or contributors) understand each module through Q&A.
+A user types a question in plain English, for example "How do I draw an area of interest for downloading satellite imagery?", and the assistant returns a grounded answer pulled from the project's own knowledge base, rewritten in a more conversational tone. If the question is outside the project's scope, the assistant says so instead of guessing.
 
-## Modules
+## Architecture: retrieve-and-rephrase (not generative RAG)
 
-### 1. Data Acquisition
-Lets a user draw an Area of Interest (AOI) on a map and automatically finds **paired dates** where both Sentinel-1 and Sentinel-2 captured imagery within a matching time window. Both sensors are needed because radar penetrates cloud cover while optical imagery provides spectral/color detail — together they form the input "chip pairs" used downstream. Before downloading, the system estimates the number of chips, storage size, and download time.
+This is a constrained variant of RAG. A standard RAG pipeline retrieves context and lets the LLM generate a free-form answer from it. Here, the LLM is never allowed to generate the answer's content. It only rephrases an answer that was already written and verified by hand. This removes the main risk of RAG in a technical support setting: the model inventing or distorting a number, threshold, or parameter.
 
-### 2. Data Annotation
-Generates water/land masks for the downloaded imagery using a **weak supervision pipeline** — physics-based rules instead of manual labeling. It scans the SAR (`SAR_ALL_BANDS`) and optical (`OPTICAL_ALL_BANDS`) directories, matches tiles by shared index ("paired tiles"), and fuses each matched radar/optical pair into a mask. Unpaired tiles are reported but skipped.
+The pipeline has four stages:
 
-### 3. Training and Preprocessing
-Trains **MUST-Former**, a transformer-based flood segmentation model, in five variants:
-| Variant | Description |
+```
+User question
+     |
+     v
+[1] Embed question  --------------->  all-MiniLM-L6-v2
+     |
+     v
+[2] Retrieve nearest QA pair  ----->  cosine similarity over a fixed
+     |                                 knowledge base, optionally
+     |                                 filtered to one module
+     v
+[3] Threshold check  -------------->  below 0.55 -> fallback message,
+     |                                 no LLM call
+     v
+[4] Rephrase  ---------------------->  Qwen2.5-1.5B-Instruct (GGUF)
+     |                                 rewrites tone only, facts frozen
+     v
+Final answer + matched module + similarity score
+```
+
+### 1. Knowledge base
+
+A curated set of 822 question-answer pairs (`qa_dataset.json`), each tagged with the module it belongs to:
+
+| Module | QA pairs |
 |---|---|
-| `MUST-Former-SAR` | Radar-only, 2 input channels |
-| `MUST-Former-Optical` | Optical-only, 15 input channels |
-| `MUST-Former-Projector` | Fusion via independent projection of each modality to 3 channels, then summed |
-| `MUST-Former-CrossAttn` | Fusion via bi-directional cross-attention between radar and optical features |
-| `MUST-Former-PCA` | Fusion via channel standardization + projection to 3 channels |
-
-This module covers preprocessing of the paired chips, training configuration (learning rate, batch size, etc.), and checkpoint export.
-
-### 4. Damaged Building Detection
-Runs inference with a trained MUST-Former checkpoint (typically the PCA fusion variant) on new imagery, converts the predicted flood mask into geographic polygons, and cross-references them against the **Google Open Buildings** dataset to flag which buildings fall inside flooded areas. Inference uses GPU if available and falls back to CPU automatically.
-
-## AI Assistant (Q&A System)
-
-The assistant (`the_AI_assitant.ipynb`) is a lightweight retrieval-augmented Q&A tool that lets anyone ask questions about the four modules above and get accurate, sourced answers — without calling a large hosted LLM.
-
-**How it works:**
-1. **Knowledge base** — `qa_dataset.json` contains 822 question/answer pairs, each tagged with its module.
-2. **Embedding & retrieval** — Each question is embedded with `sentence-transformers/all-MiniLM-L6-v2`. A user query is embedded the same way, and matched via cosine similarity, optionally restricted to a single module to avoid cross-module ambiguity.
-3. **Confidence threshold** — If the best match scores below `SIMILARITY_THRESHOLD = 0.55`, the assistant returns a fallback message instead of guessing.
-4. **Rephrasing** — The matched answer is passed to a local **Qwen2.5-1.5B-Instruct** model (GGUF, via `llama-cpp-python`) which rewords it conversationally while explicitly preserving every fact, number, and unit. Rephrased answers are cached per record to avoid recomputation.
-
-```python
-answer, module, score = answer_question(
-    "What learning rate and batch size are used during training?",
-    module="Training and Preprocessing"  # optional filter
-)
-```
-
-## Repository Structure
-
-```
-.
-├── data_acquisition/              # AOI selection, Sentinel-1/2 download & pairing
-├── data_annotation/               # Weak supervision masking pipeline
-├── training_preprocessing/        # MUST-Former model variants & training scripts
-├── damaged_building_detection/    # Inference + building overlay analysis
-├── ai_assistant/
-│   ├── the_AI_assitant.ipynb      # Embedding + LLM Q&A assistant
-│   └── qa_dataset.json            # 822-pair knowledge base
-└── README.md
-```
-
-> Adjust this tree to match your actual folder layout before pushing to GitHub.
-
-## Installation
-
-```bash
-pip install sentence-transformers huggingface_hub llama-cpp-python
-```
-
-The assistant downloads `Qwen/Qwen2.5-1.5B-Instruct-GGUF` (q4_k_m quantization) from the Hugging Face Hub on first run and runs entirely on CPU (`n_threads=4`).
-
-## Usage
-
-1. Place `qa_dataset.json` in the same directory as the notebook (or update the path).
-2. Run all cells in `the_AI_assitant.ipynb`.
-3. Call `answer_question(question, module=None)`:
-   - `question`: natural-language question
-   - `module`: one of `Data Acquisition`, `Data Annotation`, `Training and Preprocessing`, `Damaged Building Detection` (optional — omitting it searches all modules)
-4. Returns a tuple: `(answer, matched_module, similarity_score)`.
-
-## Dataset
-
-`qa_dataset.json` — 822 question/answer pairs labeled by module:
-
-| Module | # Q&A pairs |
-|---|---|
-| Data Acquisition | 213 |
-| Data Annotation | 155 |
 | Training and Preprocessing | 281 |
+| Data Acquisition | 213 |
 | Damaged Building Detection | 173 |
+| Data Annotation | 155 |
 
-Each entry has the schema:
-```json
-{
-  "module": "Data Acquisition",
-  "question": "...",
-  "answer": "..."
-}
-```
+Every pair is a single fact: a question phrased the way a user would actually ask it, and a short, precise answer. This dataset is the only source of truth the assistant is allowed to draw from.
 
-## Limitations
+### 2. Retrieval
 
-- The assistant only knows what's in `qa_dataset.json` — it does not generate novel technical answers, only retrieves and rephrases existing ones.
-- Out-of-scope or unrelated questions (e.g., general knowledge) are caught by the similarity threshold and return a fallback message, but borderline questions near the threshold may occasionally be misrouted.
-- Runs on CPU by default; expect a few seconds of latency per query due to the local LLM rephrasing step.
+Every question in the knowledge base is embedded once at startup with `sentence-transformers/all-MiniLM-L6-v2` (normalized embeddings, CPU inference). At query time the user's question is embedded the same way, and the best match is found by cosine similarity (dot product of normalized vectors) against the candidate pool.
 
-## License
+Retrieval supports **module filtering**: if the calling UI already knows which module the user is in (because they asked the question from inside, say, the Data Annotation screen), the search space is restricted to that module's QA pairs only. This removes cross-module ambiguity (e.g. "threshold" means something different in annotation vs. damage detection) and makes retrieval faster and more precise. If no module is given, the assistant searches the full knowledge base.
 
-_Add your chosen license here (e.g., MIT, Apache 2.0)._
+### 3. Similarity threshold and fallback
+
+A fixed threshold (`0.55`) decides whether the best match is good enough to answer from. If the top similarity score falls below this, the assistant returns a fixed fallback message and skips the LLM call entirely:
+
+> "That question isn't covered in the flood detection project knowledge base."
+
+This is what keeps the assistant from confidently answering questions it has no business answering, even if a module filter is set (e.g. asking for a cake recipe inside the Data Acquisition module still falls back).
+
+### 4. Rephrasing
+
+Once a record clears the threshold, its stored answer is rewritten by a small local LLM, **Qwen2.5-1.5B-Instruct** (GGUF, quantized, run via `llama-cpp-python`, 4 threads, 2048 context). The system prompt is deliberately narrow:
+
+> Rephrase technical answers so they sound more conversational. Keep every fact, number, threshold, unit, and formula exactly as given. Do not add or remove information. Only adjust sentence structure and tone.
+
+The model is given the verified answer as input and asked only to restyle it (low temperature, 0.3, to keep rewrites stable). It is never given the question, the knowledge base, or any instruction to "answer" anything — its only job is paraphrasing.
+
+Rephrased answers are cached by record index, so the first time a given QA pair is matched it costs one LLM call, and every later hit on that same record is served instantly from the cache rather than calling the LLM again.
+
+## Output
+
+`answer_question(question, module=None)` returns a 3-tuple:
+
+- the final answer (rephrased text, or the fallback message)
+- the matched module (or `None` if the fallback fired)
+- the similarity score of the best match, for logging/debugging
+
+## Design notes
+
+- **No hallucination by construction.** The LLM never sees the knowledge base or generates facts; it only restyles a pre-approved answer. Wrong answers can only come from bad retrieval, not invented content.
+- **Module filtering** is optional but recommended: it cuts ambiguity between modules that reuse similar terminology and reduces the search space.
+- **Threshold is a tunable knob.** Raising it makes the assistant stricter about admitting "I don't know"; lowering it makes it more willing to stretch a partial match.
+- **Caching** means repeated questions across users (or the same user trying different phrasings that land on the same record) don't re-run the LLM.
+
+## Stack
+
+- `sentence-transformers` (all-MiniLM-L6-v2) for embeddings
+- `numpy` for similarity scoring
+- `llama-cpp-python` + Qwen2.5-1.5B-Instruct GGUF (Q4_K_M) for rephrasing
+- Plain JSON for the knowledge base, no vector database required at this scale
